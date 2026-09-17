@@ -1,0 +1,36 @@
+{
+  "name": "frontend-knowledge",
+  "version": "2.0.0",
+  "description": "Cross-platform frontend technical knowledge base. 6 domains, 50+ patterns, 5-layer retrieval, auto-trigger for UI/animations/layouts/components/interactions.",
+  "repository": "https://github.com/louyunxi/frontend-knowledge",
+  "author": "louyunxi",
+  "homepage": "https://github.com/louyunxi/frontend-knowledge#readme",
+  "skills": [
+    {
+      "name": "frontend",
+      "description": "Frontend knowledge base. Auto-triggers on UI, animations, layouts, components, interactions. Use /frontend <query|path>, /frontend:distill, /frontend:list.",
+      "domains": ["动效", "布局", "功能", "项目规范", "设计主题", "技术选型"]
+    }
+  ],
+  "compatibility": {
+    "trae": {
+      "minVersion": "1.0"
+    },
+    "claude-code": {
+      "minVersion": "0.1"
+    },
+    "deepseek-harness": {
+      "minVersion": "0.1"
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "frontend",
+    "knowledge-base",
+    "animations",
+    "layouts",
+    "ui-components",
+    "design-tokens",
+    "frontend-patterns"
+  ]
+}

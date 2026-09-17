@@ -1,0 +1,24 @@
+# 本地安装目录（应通过 install.ps1 安装，不进仓库）
+.trae/
+
+# IDE / 编辑器配置
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 系统文件
+desktop.ini
+
+# 临时文件
+*.tmp
+*.bak
+*.log
+
+# 敏感信息
+.env
+.env.local
+*.pem
+*.key
