@@ -7,6 +7,20 @@ description: 前端技术经验知识库（自动触发）。当开发 UI 页面
 
 前端技术经验知识库、页面方案分析和蒸馏系统。管理、搜索、复用和蒸馏前端项目经验，并把页面事实与跨域知识编排成可执行方案。
 
+> ⚠️ **维护策略（必读）**
+>
+> 本目录 `frontend/` 是 Skill 的**唯一真相源**（Git tracked），对外推送、团队共享、Skill 发布都以它为准。
+>
+> IDE 加载目录 `.trae/skills/frontend/`（或 `.claude/skills/frontend/` 等）由 `install.ps1` 创建为 **Windows 目录联接（Junction）**，本质是指向 `frontend/` 的符号链接。物理上**只有一份文件**——任何路径改了文件，另一处立即看到，**不再需要 sync**，也**永远不会 drift**。
+>
+> - ✅ 蒸馏、修改、新增 → 只动 `frontend/`
+> - ✅ 提交：先在 `frontend/` 内 `git add/commit/push`
+> - ✅ 给其他 IDE 装一份：`.\install.ps1 -Tool trae -Scope project -ProjectPath .`
+> - ❌ 严禁对 `.trae/skills/frontend/` 做 `Copy-Item` / 真复制——会让两份再次分歧
+> - ❌ 严禁把 `__SKILL_ROOT__`、`sync.ps1` 这类过时机制带回来
+>
+> 卸载：`.\install.ps1 -Tool trae -Scope project -ProjectPath . -Uninstall`
+
 ## 命令系统
 
 ### /frontend - 主命令（自动查询知识库并编排提示词）
@@ -18,16 +32,23 @@ description: 前端技术经验知识库（自动触发）。当开发 UI 页面
 
 该命令同时承担原 `/frontend:analyze`（页面分析+方案编排）和 `/frontend:knowledge`（关键词搜索+知识匹配）的全部能力。
 
+**默认 auto-execute**：输出 Agent 实施提示词后**立即进入代码改造**，不需要用户手动确认。需要回归"先展示再动手"的旧式行为时，加 `--confirm`；只想预览不动手，加 `--dry-run`；想安静跑，加 `--quiet`。开关可叠加。
+
+**危险命令强制拦截**：不论哪种模式，下列动作在执行前必须单独向用户确认一次（装依赖、跑构建/部署、git push、破坏性操作、改全局配置、CI/CD 改动、提交到 main/master、--force 之类的绕过校验开关）。详细规则见 `commands/frontend.md` 的"执行模式"与"危险命令拦截"章节。
+
 ```
 使用场景：
 ├── 想实现某个功能并直接拿到可执行提示词
 ├── 想改造某个页面的布局、动效、主题并交给大模型
 ├── 遇到某个技术问题并希望一次性得到方案 + 提示词
-└── 任何需要"召唤知识库 → 编排提示词"的开发任务
+└── 任何需要"召唤知识库 → 编排提示词 → 自动落地"的开发任务
 
 触发方式：
-/frontend <需求描述>           # 走"需求描述分支"
-/frontend <页面路径>           # 走"页面路径分支"
+/frontend <需求描述>                   # 走"需求描述分支"，默认 auto-execute
+/frontend <页面路径>                   # 走"页面路径分支"，默认 auto-execute
+/frontend <需求描述> --confirm         # 生成后暂停，等确认再动手
+/frontend <页面路径> --dry-run         # 只输出分析 + prompt，不动文件
+/frontend <需求描述> --quiet           # 安静模式：压缩中间输出
 
 示例：
 /frontend 实现一个带入场动画的筛选表格
@@ -43,15 +64,15 @@ description: 前端技术经验知识库（自动触发）。当开发 UI 页面
 - 输入是自然语言描述、关键词、技术名词或需求场景 → 走"需求描述分支"
 - 同一输入同时包含路径和需求时，**优先页面路径分支**，把需求作为补充描述
 
-需求描述分支的产出：召回方案列表 + 知识摘要 + Agent 实施提示词。
+需求描述分支的产出：召回方案列表 + 知识摘要 + Agent 实施提示词。默认 auto-execute，输出 prompt 后立即实施。
 
-页面路径分支的产出：页面分析报告 + Agent 实施提示词。
+页面路径分支的产出：页面分析报告 + Agent 实施提示词。默认 auto-execute，输出 prompt 后立即实施。
 
-完整规则、决策优先级、跨域编排、阶段流程与禁止行为见 `commands/frontend.md`。页面路径分支输出遵循 `templates/analyze-output.md`，完成前执行 `verification/analyze-checklist.md`。
+完整规则、决策优先级、跨域编排、阶段流程、执行模式、危险命令拦截与禁止行为见 `commands/frontend.md`。页面路径分支输出遵循 `templates/analyze-output.md`，完成前执行 `verification/analyze-checklist.md`。
 
 ### /frontend:distill - 知识蒸馏
 
-> ⚠️ **路径硬约束**：所有蒸馏落盘**只能且必须**写入当前 skill 的 `knowledge/` 目录，即 `__SKILL_ROOT__\knowledge\`。严禁写入任何其他 Skill、其他项目目录或 `__SKILL_ROOT__` 以外的任何路径。
+> ⚠️ **路径硬约束**：所有蒸馏落盘**只能且必须**写入当前 skill 的 `knowledge/` 目录（即 `frontend/knowledge/`）。严禁写入其他 Skill 目录、其他项目目录或 skill 根以外的任何路径。
 
 当需要从代码或项目中提取技术经验、记录最佳实践或踩坑时使用。
 
@@ -99,7 +120,9 @@ description: 前端技术经验知识库（自动触发）。当开发 UI 页面
 
 ## 自动触发模式（Auto-Trigger）
 
-本 skill **默认开启自动触发**。当用户输入符合下列场景时，**无需显式调用 `/frontend`** 也会激活本 skill，自动匹配知识库并输出 Agent 实施提示词。输出格式与显式 `/frontend` 命令**完全一致**。
+本 skill **默认开启自动触发**。当用户输入符合下列场景时，**无需显式调用 `/frontend`** 也会激活本 skill，自动匹配知识库、输出 Agent 实施提示词、**并按 auto-execute 立即进入代码改造**。危险命令（装依赖、push、删除等）照常二次确认。输出格式与显式 `/frontend` 命令**完全一致**。
+
+> 💡 如果不希望自动触发后立即动手改造，可在 Trae 偏好中关闭自动触发，或临时让用户用 `--confirm` / `--dry-run` 显式调用 `/frontend`。
 
 ### 触发场景分类
 
@@ -374,7 +397,7 @@ L5 场景推荐 (40%)    → 场景索引、知识图谱
 
 ### 分支二：页面路径（`/frontend <页面路径>`）
 
-读取页面及项目上下文，跨域检索前端知识，生成可直接交给实现 Agent 的完整页面实施方案。命令只输出分析和方案，不修改页面，不触发实现 Agent。
+读取页面及项目上下文，跨域检索前端知识，生成可直接交给实现 Agent 的完整页面实施方案。命令默认 auto-execute（输出 prompt 后立即进入实施），需停止实施可加 `--confirm` / `--dry-run`。
 
 完整流程、决策优先级、跨域编排与禁止行为见 `commands/frontend.md`；输出模板见 `templates/analyze-output.md`；完成前执行 `verification/analyze-checklist.md`。
 

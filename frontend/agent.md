@@ -8,9 +8,9 @@
 
 > **本 Skill 是且仅是 `frontend` 这个 Skill 的内容维护工具。**
 >
-> 所有知识蒸馏操作（`/frontend:distill`）**必须且只能**保存到本 Skill 的 `knowledge/` 目录，即 `__SKILL_ROOT__\knowledge\[对应域]/`。
+> 所有知识蒸馏操作（`/frontend:distill`）**必须且只能**保存到本 Skill 的 `knowledge/` 目录（即 `frontend/knowledge/[对应域]/`）。
 >
-> 严禁将任何前端技术知识蒸馏到其他 Skill、其他目录或 `__SKILL_ROOT__` 以外的任何位置。
+> 严禁将任何前端技术知识蒸馏到其他 Skill、其他目录或 `frontend/knowledge/` 以外的任何位置。
 >
 > 违反此约束会导致：知识分散、无法通过 `/frontend` 检索、索引体系失效、知识库维护混乱。
 
@@ -39,7 +39,7 @@
 
 召回架构：L1 精确匹配 → L2 语义匹配 → L3 扩展匹配 → L4 组合匹配 → L5 场景推荐。
 
-输出：召回方案列表 + 知识摘要 + Agent 实施提示词（可直接复制使用）。
+输出：召回方案列表 + 知识摘要 + Agent 实施提示词（可直接复制使用）。**默认 auto-execute**，输出 prompt 后立即进入实施；危险命令必须二次确认。
 
 #### 页面路径分支（/frontend <页面路径>）
 
@@ -47,7 +47,7 @@
 
 必须先读取：页面入口、直接引用的组件/样式/类型/Hooks/工具、项目依赖、设计规范、公共页面容器。
 
-输出：页面分析报告 + Agent 实施提示词（可直接复制使用）。
+输出：页面分析报告 + Agent 实施提示词（可直接复制使用）。**默认 auto-execute**，输出 prompt 后立即进入实施；危险命令必须二次确认。
 
 详见 `commands/frontend.md`。
 
@@ -64,7 +64,7 @@
 | `pitfall` | 记录踩坑和解决方案 |
 | `page-layout` | 蒸馏页面布局模式（强制 --domain 布局 --platform web\|mobile\|responsive） |
 
-> ⚠️ **路径硬约束**：所有落盘只能写入 `__SKILL_ROOT__\knowledge\[对应域]/`。
+> ⚠️ **路径硬约束**：所有落盘只能写入 `frontend/knowledge/[对应域]/`。
 
 详见 `commands/distill.md`。
 
@@ -115,14 +115,16 @@
 
 ## 禁止行为
 
-- 不修改页面代码或样式
-- 不自动触发实现 Agent
+- 不修改页面代码或样式（除非显式开启 auto-execute 或未加 `--dry-run` / `--confirm` 关闭执行）
+- 默认 auto-execute：生成 Agent 实施提示词后立即进入实施，但**危险命令拦截清单**（见 `commands/frontend.md`）必须二次确认
 - 不把知识检索结果原样堆入提示词
 - 不编造项目组件、设计规则或知识文件
-- 不以"现代化"为理由引入无目的动画
+- 不以"现代化"为理由引入渐变、玻璃拟态、过度圆角或无目的动画
+- 不创建全新页面组件（auto-execute 只改造、改写现有代码，不主动新建文件，除非明确需求要求）
+- 不根据文件名直接推断完整页面类型（必须读文件后判断）
 
 ---
 
-## 路径占位符说明
+## 路径约束说明
 
-`__SKILL_ROOT__` 是安装时由 `install.ps1` 动态替换的路径占位符，替换为实际安装路径。AI 在执行蒸馏命令时应使用相对路径 `knowledge/[域]/`，由 skill 自身解析为实际绝对路径。
+本 Skill 通过 **Junction 联接** 安装到 IDE 的 `frontend/` 加载目录，物理上只有源码 `frontend/` 这一份。AI 在执行蒸馏命令时应使用相对路径 `knowledge/[域]/`，由 skill 自身和 IDE 工作目录解析为绝对路径，**不需要也不应**在源码内出现绝对路径占位符。

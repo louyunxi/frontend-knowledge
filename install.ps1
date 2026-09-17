@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 param(
     [Alias("t")]
     [ValidateSet("trae", "claude", "dsh", "all", IgnoreCase = $true)]
@@ -88,54 +88,84 @@ function Install-Skill {
         [string]$RepoRoot,
         [string]$SkillSource
     )
+    $resolvedSource = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($SkillSource)
     $resolvedTarget = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($TargetRoot)
-    if (Test-Path $resolvedTarget) {
-        if ($Uninstall) {
-            Write-Step "[$ToolName] Uninstalling Skill"
-            Remove-Item -Path $resolvedTarget -Recurse -Force
-            Write-Success "Removed frontend Skill from $resolvedTarget"
-            return
+
+    # Path equality check (case-insensitive on Windows)
+    $samePath = [string]::Equals(
+        (Resolve-Path $resolvedSource -ErrorAction SilentlyContinue).Path,
+        (Resolve-Path $resolvedTarget -ErrorAction SilentlyContinue).Path,
+        [StringComparison]::OrdinalIgnoreCase
+    )
+
+    if ($Uninstall) {
+        Write-Step "[$ToolName] Uninstalling Skill"
+        if (Test-Path $resolvedTarget) {
+            $attr = (Get-Item $resolvedTarget).Attributes
+            if ($attr -band [IO.FileAttributes]::ReparsePoint) {
+                # Junction: just remove the link, don't touch the source
+                cmd /c rmdir $resolvedTarget | Out-Null
+                Write-Success "Removed junction: $resolvedTarget"
+            } else {
+                Remove-Item -Path $resolvedTarget -Recurse -Force
+                Write-Success "Removed frontend Skill from $resolvedTarget"
+            }
         } else {
-            Write-Step "[$ToolName] Skill already exists, skipping (use -Uninstall first)"
+            Write-Warn "Not installed at $resolvedTarget"
+        }
+        return
+    }
+
+    # If target is the same physical directory as source, we are essentially
+    # "installing into self" — make sure there's a junction from target to source
+    # so IDEs can pick it up, but DON'T touch the actual files.
+    if ($samePath) {
+        Write-Step "[$ToolName] Skill lives at this exact path already, no action needed"
+        Write-Host "  Source: $resolvedSource" -ForegroundColor DarkGray
+        Write-Host "  Target: $resolvedTarget" -ForegroundColor DarkGray
+        Write-Success "Nothing to copy (single source of truth)"
+        return
+    }
+
+    # Detect: target may already be a junction into our source (this happens
+    # when install is run twice and the prior install already chose junction).
+    if (Test-Path $resolvedTarget) {
+        $item = Get-Item $resolvedTarget
+        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            $linkTarget = $item.Target
+            if ($linkTarget -and (Resolve-Path $linkTarget -ErrorAction SilentlyContinue).Path -eq `
+                (Resolve-Path $resolvedSource -ErrorAction SilentlyContinue).Path) {
+                Write-Step "[$ToolName] Junction already linked to source — OK"
+                Write-Host "  $resolvedTarget -> $linkTarget" -ForegroundColor DarkGray
+                Write-Success "Nothing to do"
+                return
+            } else {
+                Write-Warn "Target is a junction but points elsewhere: $linkTarget"
+                Write-Warn "Re-creating junction to source $resolvedSource"
+                cmd /c rmdir $resolvedTarget | Out-Null
+            }
+        } else {
+            Write-Step "[$ToolName] Skill already exists as a real directory, skipping (use -Uninstall first)"
             Write-Host "  Path: $resolvedTarget" -ForegroundColor DarkGray
             return
         }
     }
-    if ($Uninstall) {
-        Write-Step "[$ToolName] Not installed, nothing to uninstall"
-        return
-    }
+
     Write-Step "[$ToolName] Installing Skill"
-    Write-Host "  From: $SkillSource" -ForegroundColor DarkGray
+    Write-Host "  From: $resolvedSource" -ForegroundColor DarkGray
     Write-Host "  To:   $resolvedTarget" -ForegroundColor DarkGray
+
     $parent = Split-Path $resolvedTarget -Parent
     if (-not (Test-Path $parent)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
         Write-Host "  Created: $parent" -ForegroundColor DarkGray
     }
-    Copy-Item -Path $SkillSource -Destination $resolvedTarget -Recurse -Force
-    Write-Success "Copied to $resolvedTarget"
-    $placeholder = "__SKILL_ROOT__"
-    $filesToPatch = @(
-        (Join-Path $resolvedTarget "SKILL.md"),
-        (Join-Path $resolvedTarget "agent.md"),
-        (Join-Path $resolvedTarget "commands\distill.md")
-    )
-    $patched = 0
-    foreach ($file in $filesToPatch) {
-        if (-not (Test-Path $file)) { continue }
-        $content = Get-Content $file -Raw -Encoding UTF8
-        if ($content -match [regex]::Escape($placeholder)) {
-            $content = $content -replace [regex]::Escape($placeholder), $resolvedTarget
-            Set-Content -Path $file -Value $content -Encoding UTF8 -NoNewline
-            $patched++
-        }
-    }
-    if ($patched -gt 0) {
-        Write-Success "Replaced path placeholder in $patched file(s)"
-    } else {
-        Write-Warn "No placeholder found to replace (may already be replaced)"
-    }
+
+    # Use Windows directory junction so target and source share the same physical
+    # files. Edits in either path show up immediately on the other side; no
+    # sync step is ever required. Junction needs no admin and works on NTFS.
+    cmd /c mklink /J "$resolvedTarget" "$resolvedSource" | Out-Null
+    Write-Success "Junction created: $resolvedTarget -> $resolvedSource"
 }
 
 $toolsToProcess = if ($Tool -eq "all") { @("trae", "claude", "dsh") } else { @($Tool.ToLower()) }

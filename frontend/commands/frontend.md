@@ -7,6 +7,59 @@
 
 `/frontend` 同时承担原 `/frontend:analyze`（页面分析+方案编排）和 `/frontend:knowledge`（关键词搜索+知识匹配）的全部能力。
 
+## 执行模式（Execution Modes）
+
+`/frontend` 默认走 **auto-execute**（自动执行）模式：召回知识 + 生成 Agent 实施提示词 + 立即进入代码改造，**不再强制等待用户确认**。如果需要回到旧式"生成后暂停"的行为，用下面任一开关。
+
+| 模式 | 触发方式 | 行为 |
+|------|---------|------|
+| `auto-execute`（默认） | `/frontend 首页` | 输出 prompt 后直接开始修改代码，跑测试、查看错误、自我修复 |
+| `confirm` | `/frontend 首页 --confirm` | 生成 prompt 后**暂停**，把 prompt 摆出来等你按确认再继续 |
+| `dry-run` | `/frontend 首页 --dry-run` | 只输出 prompt + 页面分析报告，**不动任何文件、不跑任何命令** |
+| `quiet` | `/frontend 首页 --quiet` | 同 auto-execute，但所有中间过程压缩成最少输出（适合批量场景） |
+
+开关可叠加：`/frontend 首页 --dry-run --quiet` 表示"预览且不啰嗦"。
+
+### 危险命令拦截（Dangerous Commands）
+
+无论走哪种执行模式，下列动作**必须先列出来让用户确认一次**（不论是不是默认自动执行）：
+
+```text
+- 装/卸载依赖：npm install / yarn add / pnpm add / pip install / bundle add / cargo add ...
+- 跑构建/打包：npm run build / yarn build / webpack / vite build ...
+- 部署相关：vercel / netlify / firebase deploy / docker push / kubectl apply / ssh ...
+- 推送代码：git push / git push --force / git push --tags ...
+- 破坏性操作：rm -rf / git reset --hard / git clean -fd / drop database / DROP TABLE ...
+- 改全局配置：npm config / git config --global / 修改 ~/.bashrc ~/.zshrc ...
+- 改 CI/CD：.github/workflows/* / .gitlab-ci.yml / Jenkinsfile 等
+- 提交到 main / master / production 分支
+- 任何 --force / --hard / --no-verify / --skip-tests / --allow-empty 等绕过校验的开关
+```
+
+拦截策略：
+
+- AI 在执行上述命令**之前**必须列出命令、影响范围、是否可回滚，等用户输入 `y / yes / 继续 / 确认` 才执行。
+- 若用户已经通过 `--confirm` 显式开启确认模式，则每个上述命令仍需二次确认，不被默认放行。
+- 已有项目内 `npm run dev` / `npm run lint` / `npm run test` 等**幂等且无外部副作用**的命令不拦截，直接跑。
+- 给出"可撤销"清单（如 `git checkout .`、`git stash`、`npm uninstall xxx`），让用户在执行危险动作前能看到回滚路径。
+
+### 执行阶段检查点
+
+auto-execute 模式把"召回 + 编排 + 实现 + 验证"合并为一次连续动作，但内部仍按阶段推进，阶段之间 AI 自检（**不需要用户参与**）：
+
+```text
+Stage 1  召回与编排 → 输出 prompt（含目标、技术栈、要点清单、实施顺序、验收）
+Stage 2  上下文读取 → 读取页面/项目，识别约束
+Stage 3  计划暴露 → 把"准备改哪些文件 / 跑哪些命令"先列出来（不执行）
+Stage 4  实施 → 改代码，期间危险命令先停
+Stage 5  自检 → 跑 lint / type-check / build，按需自动修复
+Stage 6  报告 → 给出"改了 X 个文件 / 跑了 Y 个命令 / 验证 Z 通过"的总结
+```
+
+如果任何阶段失败（lint 不过 / build 报红），AI 自动尝试修复（≤3 次），失败后停下来报告并等待用户。
+
+---
+
 ## 命令格式
 
 ```text
@@ -35,7 +88,7 @@
 │                                                    │
 │ ├── 输入是已存在的本地文件/目录路径                │
 │ │    → 命中"页面路径分支"                          │
-│ │    → 必须能读到页面入口，否则提示用户确认        │
+│ │    → 必须能读到页面入口，否则自动降级为需求描述分支并列出证据缺口 │
 │ │                                                   │
 │ └── 否则                                            │
 │      → 命中"需求描述分支"                          │
@@ -580,18 +633,19 @@ Agent 提示词必须包含准确路径、必须阅读文件、可复用组件�
 
 ## 禁止行为（两个分支通用）
 
-- 不修改页面代码或样式
-- 不创建页面组件
-- 不自动触发实现 Agent
-- 不根据文件名直接推断完整页面类型
+- 不修改页面代码或样式（如用户通过 `--confirm` / `--dry-run` 显式关闭执行，则这一条无效）
+- 默认 auto-execute：生成 Agent 实施提示词后立即进入实施，但**危险命令拦截清单**（见上文）必须二次确认
 - 不把知识检索结果原样堆入提示词
 - 不编造项目组件、设计规则或知识文件
 - 不以"现代化"为理由引入渐变、玻璃拟态、过度圆角或无目的动画
 - 不要求实现 Agent 重写已经稳定工作的业务逻辑
+- 不创建全新页面组件（auto-execute 只改造、改写现有代码，不主动新建文件，除非明确需求要求）
+- 不根据文件名直接推断完整页面类型（必须读文件后判断）
 
 ## 完成条件（两个分支通用）
 
-- 需求描述分支：输出召回方案列表 + 知识摘要 + Agent 实施提示词
-- 页面路径分支：输出页面分析报告 + Agent 实施提示词
+- 需求描述分支：输出召回方案列表 + 知识摘要 + Agent 实施提示词，再按 auto-execute 进入实施
+- 页面路径分支：输出页面分析报告 + Agent 实施提示词，再按 auto-execute 进入实施
 - 输出前执行 `verification/analyze-checklist.md` 做自检
-- 页面入口无法确认、关键直接依赖无法读取或页面主要任务无法判断时，只输出已确认事实、证据缺口、受影响结论和需要用户补充的信息，不得生成 Agent 实施提示词，也不得声称方案完整
+- 页面入口无法确认、关键直接依赖无法读取或页面主要任务无法判断时，**自动降级**：按需求描述分支处理 + 标注证据缺口 + 列出受影响结论 + 给出推断方案。不再要求用户手动补充信息。
+- 实施结束后输出 diff 摘要（改的文件数 + 跑过的命令 + 验证结果）
