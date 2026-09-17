@@ -125,6 +125,53 @@
 
 ---
 
-## 路径约束说明
+## 维护位置约束（重要）
+
+> **本 Skill 物理上只有一份文件。** 任何时候、任何场景下，AI 与开发者在**创建、编辑、删除 Skill 内文件时，永远只能操作 `frontend/` 下的文件，不要把 `.trae/skills/frontend/` 当作"独立副本"来处理。**
+
+### 物理真相
+
+```
+E:\AI\front-knowledge\frontend\              ← 唯一真相源（Git tracked，开发者编辑唯一入口）
+└── SKILL.md / agent.md / commands / knowledge / templates / verification / ...
+
+E:\AI\front-knowledge\.trae\skills\frontend\   ← Junction（Windows 目录联接）
+    ↓ mklink /J
+E:\AI\front-knowledge\frontend\              ← 物理上指向同一个目录
+```
+
+`mklink /J` 是 NTFS 目录联接（reparse point），对所有上层软件（IDE、文件系统 API、Git、PowerShell、其它工具）完全透明：
+
+- 两边看到的目录列表**完全一致**
+- 通过任一路径改文件，物理上就是同一个 inode / 同一份字节
+- 不存在"复制 vs 链接"漂移的可能
+- `.trae/` 已在 `.gitignore` 中，Junction 永远不会被提交
+
+### AI 行为约束
+
+| 场景 | AI 应该写到的路径 | 反例（**禁止**） |
+|------|------------------|------------------|
+| 修改 `agent.md` | `frontend/agent.md` | ~~写 `.trae/skills/frontend/agent.md` 然后期望它"独立保存"~~ |
+| 新增知识文件 | `frontend/knowledge/[域]/xxx.md` | ~~写 `.trae/skills/frontend/knowledge/...`~~ |
+| 新增命令 | `frontend/commands/xxx.md` | ~~`.trae/skills/frontend/commands/...`~~ |
+| 修改脚本 | 直接改 `frontend/` 下 `SKILL.md` / `agent.md` / `commands/*` | ~~"在 .trae 里同步" 之类操作~~ |
+
+### 三条铁律
+
+1. **永远编辑 `frontend/` 下的文件**——junction 让 IDE 自动同步，不需要再走 sync / copy / patch 一类步骤。
+2. **不要执行任何向 `.trae/skills/frontend/` "复制 / 同步 / patch" 的操作**——`sync.ps1` 已删除；`Copy-Item` 会创建真副本，立即引入 drift。要给另一台机器装这份 Skill，仍用 `.\install.ps1 -Tool trae -Scope project -ProjectPath .`（自动 mklink /J）。
+3. **如果发现 `.trae/skills/frontend/` 不再是 Junction 而变成了真实目录**（比如 IDE 自动恢复过、或被误操作删了联接），立即报告用户、停止写入，先调用 `.\install.ps1 -Tool trae -Scope project -ProjectPath . -Uninstall` 后再 `install.ps1` 重建 Junction，**而不是去两边各自编辑**。
+
+### 用户级提示（在 SKILL.md 维护策略章节也有相同说明）
+
+- ✅ 编辑 / 新增 / 删除 → 只动 `frontend/`
+- ✅ 提交：`git add frontend/ && git commit && git push`
+- ✅ 给其他 IDE 装：`.\install.ps1 -Tool trae -Scope project -ProjectPath .`
+- ❌ 严禁把 `.trae/skills/frontend/` 当作独立副本
+- ❌ 严禁 `sync.ps1` / `Copy-Item` / 手工 patch 之类以"同步两边"为目的的操作
+
+---
+
+## 路径约束说明（运行时）
 
 本 Skill 通过 **Junction 联接** 安装到 IDE 的 `frontend/` 加载目录，物理上只有源码 `frontend/` 这一份。AI 在执行蒸馏命令时应使用相对路径 `knowledge/[域]/`，由 skill 自身和 IDE 工作目录解析为绝对路径，**不需要也不应**在源码内出现绝对路径占位符。
